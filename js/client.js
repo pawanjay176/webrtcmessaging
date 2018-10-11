@@ -1,15 +1,11 @@
 'use strict';
-var isChannelReady = true;
-var isInitiator = true;
 var isStarted = false;
-var localChannel;
 var pc;
 var turnReady;
 var channel;
-var receiveChannel;
-
-var myId = '1';
-var remoteId = '2';
+var myId;
+var remoteId;
+var turnReady;
 
 var pcConfig = {
   'iceServers': [{
@@ -22,59 +18,76 @@ var startButton = document.querySelector('button#startButton');
 var sendButton = document.querySelector('button#sendButton');
 var closeButton = document.querySelector('button#closeButton');
 var dataChannelReceive = document.querySelector('textarea#dataChannelReceive');
+var addr = document.querySelector('textarea#addr');
+var setAddrButton = document.querySelector('button#setAddrButton');
 
 startButton.onclick = start;
+setAddrButton.onclick = setAddr;
 sendButton.onclick = sendData;
 closeButton.onclick = closeDataChannels;
 
-/////////////////////////////////////////////
+// if (location.hostname !== 'localhost') {
+//   console.log("Fetching turn..");
+//   requestTurn(
+//     'https://computeengineondemand.appspot.com/turn?username=41784574&key=4080218913'
+//   );
+// }
 
-var room = 'foo';
-// Could prompt for room name:
-// room = prompt('Enter room name:');
+function requestTurn(turnURL) {
+  var turnExists = false;
+  for (var i in pcConfig.iceServers) {
+    if (pcConfig.iceServers[i].urls.substr(0, 5) === 'turn:') {
+      turnExists = true;
+      turnReady = true;
+      break;
+    }
+  }
+  if (!turnExists) {
+    console.log('Getting TURN server from ', turnURL);
+    // No TURN server. Get one from computeengineondemand.appspot.com:
+    var xhr = new XMLHttpRequest();
+    xhr.onreadystatechange = function() {
+      if (xhr.readyState === 4 && xhr.status === 200) {
+        var turnServer = JSON.parse(xhr.responseText);
+        console.log('Got TURN server: ', turnServer);
+        pcConfig.iceServers.push({
+          'urls': 'turn:' + turnServer.username + '@' + turnServer.turn,
+          'credential': turnServer.password
+        });
+        turnReady = true;
+      }
+    };
+    xhr.open('GET', turnURL, true);
+    xhr.send();
+  }
+}
+
+/////////////////////////////////////////////
 
 var socket = io('http://localhost:8080');
 
-// if (room !== '') {
-//   socket.emit('create or join', room);
-//   console.log('Attempted to create or  join room', room);
-// }
-
-socket.on('created', function(room) {
-  console.log('Created room ' + room);
-  isInitiator = true;
-});
-
-socket.on('full', function(room) {
-  console.log('Room ' + room + ' is full');
-});
-
-socket.on('join', function (room){
-  console.log('Another peer made a request to join room ' + room);
-  console.log('This peer is the initiator of room ' + room + '!');
-  isChannelReady = true;
-});
-
-socket.on('joined', function(room) {
-  console.log('joined: ' + room);
-  isChannelReady = true;
-});
-
-
-function sendMessageToServer1(message, messageType) {
+function sendMessageToServer(message, messageType) {
   console.log('Client sending message: ', message);
   var data = {from: myId, to: remoteId, message: message};
   console.log(data);
   socket.emit(messageType, data);
 }
 
-socket.emit('open-lc', myId);
+function setAddr() {
+  if(addr.value !== '') {
+    var data = addr.value.split(" ");
+    myId = data[0];
+    remoteId = data[1];
+    socket.emit('open-lc', myId);
+    console.log('myId: '+ myId + ' remoteId: ' + remoteId);
+  }
+}
 
 socket.on('open-thread', function(data) {
   var message = data.message;
   if (message.type === 'offer') {
-    if (!isInitiator && !isStarted) {
-      start();
+    if (!isStarted) {
+      createPeerConnection();
     }
     pc.setRemoteDescription(new RTCSessionDescription(message));
     console.log('Sending answer to peer.');
@@ -83,7 +96,7 @@ socket.on('open-thread', function(data) {
         console.log("Setting local description");
         pc.setLocalDescription(sessionDescription);
         console.log('setLocalAndSendMessage sending message', sessionDescription);
-        sendMessageToServer1(sessionDescription, 'open-thread-resp');
+        sendMessageToServer(sessionDescription, 'open-thread-resp');
       },
       function (error) {
         trace('Failed to create session description: ' + error.toString());
@@ -119,89 +132,37 @@ socket.on('bye', function(data) {
   }
 })
 
-////////////////////////////////////////////////
-
-function sendMessageToServer(message) {
-  console.log('Client sending message: ', message);
-  socket.emit('message', message);
-}
-
-// This client receives a message
-socket.on('message', function(message) {
-  console.log('Client received message:', message);
-  if (message.type === 'offer') {
-    if (!isInitiator && !isStarted) {
-      start();
-    }
-    pc.setRemoteDescription(new RTCSessionDescription(message));
-    console.log('Sending answer to peer.');
-     pc.createAnswer().then(
-      function (sessionDescription) {
-        console.log("Setting local description");
-        pc.setLocalDescription(sessionDescription);
-        console.log('setLocalAndSendMessage sending message', sessionDescription);
-        sendMessageToServer(sessionDescription);
-      },
-      function (error) {
-        trace('Failed to create session description: ' + error.toString());
-      }
-  );
-  } else if (message.type === 'answer' && isStarted) {
-    console.log("Received answer..Setting remote");
-    pc.setRemoteDescription(new RTCSessionDescription(message));
-    startButton.disabled = true;
-    closeButton.disabled = false;
-  } else if (message.type === 'candidate' && isStarted) {
-    var candidate = new RTCIceCandidate({
-      sdpMLineIndex: message.label,
-      candidate: message.candidate
-    });
-    pc.addIceCandidate(candidate);
-  } else if (message === 'bye' && isStarted) {
-    handleRemoteHangup();
-  }
-});
-
 function start() {
-  console.log('>>>>>>> start() ', isStarted, isChannelReady);
-  if (!isStarted && isChannelReady) {
-    console.log('>>>>>> creating peer connection');
-    createPeerConnection();
-    isStarted = true;
-    console.log('isInitiator', isInitiator);
-    if (isInitiator) {
-      var dataConstraint = null;
-      channel = pc.createDataChannel('dataChannel', dataConstraint);
-      console.log('Created data channel');
-      channel.onopen = onChannelStateChange;
-      channel.onclose = onChannelStateChange;
-      channel.onmessage = onReceiveCallback;
-      console.log('Sending offer to peer...');
-      pc.createOffer(function(sessionDescription) {
-        pc.setLocalDescription(sessionDescription);
-        console.log('setLocalAndSendMessage sending message', sessionDescription);
-        sendMessageToServer1(sessionDescription, 'open-thread');
-      }, function (event) {
-        console.log('createOffer() error: ', event);
-      });
-    }
-  }
+  console.log('>>>>>>> start() ');
+  console.log('>>>>>> creating peer connection');
+  createPeerConnection();
+  isStarted = true;
+  var dataConstraint = null;
+  channel = pc.createDataChannel('dataChannel', dataConstraint);
+  console.log('Created data channel');
+  channel.onopen = onChannelStateChange;
+  channel.onclose = onChannelStateChange;
+  channel.onmessage = onReceiveCallback;
+  console.log('Sending offer to peer...');
+  pc.createOffer(function(sessionDescription) {
+    pc.setLocalDescription(sessionDescription);
+    console.log('setLocalAndSendMessage sending message', sessionDescription);
+    sendMessageToServer(sessionDescription, 'open-thread');
+  }, function (event) {
+    console.log('createOffer() error: ', event);
+  });
 }
-
-
 
 window.onbeforeunload = function() {
-  sendMessageToServer1('bye', 'bye');
+  sendMessageToServer('bye', 'bye');
 };
 
 /////////////////////////////////////////////////////////
 
 function createPeerConnection() {
   dataChannelSend.placeHolder = '';
-  var servers = null;
-  var pcConstraint = null;
   try {
-    pc = new RTCPeerConnection(servers, pcConstraint);
+    pc = new RTCPeerConnection(pcConfig);
     console.log('Created RTCPeerConnnection');
     pc.onicecandidate = handleIceCandidate;
     pc.ondatachannel = channelCallback;
@@ -243,7 +204,7 @@ function onChannelStateChange() {
 function handleIceCandidate(event) {
   console.log('icecandidate event: ', event);
   if (event.candidate) {
-    sendMessageToServer1({
+    sendMessageToServer({
       type: 'candidate',
       label: event.candidate.sdpMLineIndex,
       id: event.candidate.sdpMid,
@@ -268,7 +229,7 @@ function onCreateSessionDescriptionError(error) {
 function hangup() {
   console.log('Hanging up.');
   stop();
-  sendMessageToServer1('bye', 'bye');
+  sendMessageToServer('bye', 'bye');
 }
 
 function handleRemoteHangup() {
