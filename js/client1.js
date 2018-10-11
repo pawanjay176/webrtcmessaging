@@ -1,6 +1,7 @@
 'use strict';
+
 var isChannelReady = true;
-var isInitiator = true;
+var isInitiator = false;
 var isStarted = false;
 var localChannel;
 var pc;
@@ -8,8 +9,8 @@ var turnReady;
 var channel;
 var receiveChannel;
 
-var myId = '1';
-var remoteId = '2';
+var myId = '2';
+var remoteId = '1';
 
 var pcConfig = {
   'iceServers': [{
@@ -60,14 +61,11 @@ socket.on('joined', function(room) {
   isChannelReady = true;
 });
 
-
 function sendMessageToServer1(message, messageType) {
   console.log('Client sending message: ', message);
   var data = {from: myId, to: remoteId, message: message};
-  console.log(data);
   socket.emit(messageType, data);
 }
-
 socket.emit('open-lc', myId);
 
 socket.on('open-thread', function(data) {
@@ -125,6 +123,7 @@ function sendMessageToServer(message) {
   console.log('Client sending message: ', message);
   socket.emit('message', message);
 }
+
 
 // This client receives a message
 socket.on('message', function(message) {
@@ -191,7 +190,7 @@ function start() {
 
 
 window.onbeforeunload = function() {
-  sendMessageToServer1('bye', 'bye');
+  sendMessageToServer('bye', 'bye');
 };
 
 /////////////////////////////////////////////////////////
@@ -268,7 +267,7 @@ function onCreateSessionDescriptionError(error) {
 function hangup() {
   console.log('Hanging up.');
   stop();
-  sendMessageToServer1('bye', 'bye');
+  sendMessageToServer('bye');
 }
 
 function handleRemoteHangup() {

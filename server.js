@@ -9,14 +9,13 @@ var app = http.createServer(function(req, res) {
   fileServer.serve(req, res);
 }).listen(8080);
 
+var clients = {}
+
 var io = socketIO.listen(app);
 io.sockets.on('connection', function(socket) {
 
   // convenience function to log server messages on the client
   function log() {
-    // var array = ['Message from server:'];
-    // array.push.apply(array, arguments);
-    // socket.emit('log', array);
     console.log(arguments);
   }
 
@@ -26,6 +25,37 @@ io.sockets.on('connection', function(socket) {
     socket.broadcast.emit('message', message);
   });
 
+
+  socket.on('open-lc', function(addr) {
+    console.log('Opening a channel with ' + addr);
+    clients[addr] = socket;
+    // Other open-lc stuff...
+  })
+
+  socket.on('open-thread', function(data) {
+    if(clients[data.from] && clients[data.to]) {
+      clients[data.to].emit('open-thread', data);
+    }
+  });
+
+  socket.on('open-thread-resp', function(data) {
+    if(clients[data.from] && clients[data.to]) {
+      clients[data.to].emit('open-thread-resp', data);
+    }
+  })
+
+  socket.on('ice-msg', function(data) {
+    if(clients[data.from] && clients[data.to]) {
+      clients[data.to].emit('ice-msg', data);
+    }
+  })
+
+  socket.on('bye', function(data) {
+    if(clients[data.from] && clients[data.to]) {
+      clients[data.to].emit('bye', data);
+    }
+  })
+  
   socket.on('create or join', function(room) {
     log('Received request to create or join room ' + room);
 
