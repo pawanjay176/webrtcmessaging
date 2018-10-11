@@ -8,6 +8,7 @@ var fileServer = new(nodeStatic.Server)();
 var app = http.createServer(function(req, res) {
   fileServer.serve(req, res);
 }).listen(8080, "0.0.0.0");
+console.log('Server running on port 8080');
 
 var clients = {}
 

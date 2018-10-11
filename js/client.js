@@ -13,6 +13,8 @@ var pcConfig = {
   }]
 };
 
+var signallingServer = 'http://localhost:8080'
+
 var dataChannelSend = document.querySelector('textarea#dataChannelSend');
 var startButton = document.querySelector('button#startButton');
 var sendButton = document.querySelector('button#sendButton');
@@ -64,7 +66,7 @@ function requestTurn(turnURL) {
 
 /////////////////////////////////////////////
 
-var socket = io('http://localhost:8080');
+var socket = io(signallingServer);
 
 function sendMessageToServer(message, messageType) {
   console.log('Client sending message: ', message);
