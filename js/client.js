@@ -80,6 +80,7 @@ function setAddr() {
     remoteId = data[1];
     socket.emit('open-lc', myId);
     console.log('myId: '+ myId + ' remoteId: ' + remoteId);
+    setAddrButton.disabled = true;
   }
 }
 
